@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import http from 'http';
 import bodyParser from 'body-parser';
@@ -17,18 +20,46 @@ app.use(compression());
 app.use(cookieParser());
 app.use(bodyParser.json());
 
-const server = http.createServer(app);
-const port = Number(process.env.PORT) || 8080;
+app.use('/', router());
 
-server.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}/`);
-});
+const preferredPort = Number(process.env.PORT) || 8080;
 
-const MONGO_URL = "mongodb+srv://angshusaha777_db_user:cbHDXuGpjxHwZ9Tg@cluster0.jfgggac.mongodb.net/";
+const startServer = (port: number) => {
+    const server = http.createServer(app);
 
+    server.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code === 'EADDRINUSE') {
+            const nextPort = port + 1;
+            console.warn(`Port ${port} is already in use. Trying ${nextPort} instead.`);
+            startServer(nextPort);
+            return;
+        }
+
+        console.error('Server startup error:', error);
+        process.exit(1);
+    });
+
+    server.listen(port, () => {
+        console.log(`Server is running on http://localhost:${port}/`);
+    });
+};
 
 mongoose.Promise = Promise;
-mongoose.connect(MONGO_URL);
-mongoose.connection.on('error', (error: Error) => console.log(error));
 
-app.use('/',router());
+if (process.env.MONGO_URI) {
+    mongoose.connect(process.env.MONGO_URI)
+        .then(() => {
+            console.log('MongoDB Connected Successfully');
+        })
+        .catch((error: Error) => {
+            console.error('MongoDB Connection Error:', error);
+        });
+
+    mongoose.connection.on('error', (error: Error) => {
+        console.error(error);
+    });
+} else {
+    console.warn('MONGO_URI is not configured. Server will start without a database connection.');
+}
+
+startServer(preferredPort);
